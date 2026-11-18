@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Control Biométrico — Módulo 3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+
+  <!-- BARRA LATERAL DE NAVEGACIÓN POR MÓDULOS -->
+  <aside class="sidebar">
+    <div>
+      <div class="brand-box">
+        <div class="brand-logo">🛡️</div>
+        <div>
+          <h1>STADIUM SEC</h1>
+          <span>Módulo 3 • Reconocimiento Facial</span>
+        </div>
+      </div>
+
+      <div class="nav-section-label">Módulos de Operación</div>
+      <ul class="nav-list">
+        <li>
+          <button class="nav-btn active" data-view="monitor" onclick="switchView('monitor')">
+            <span class="nav-btn-left">🎥 Monitor y Video en Vivo</span>
+            <span class="nav-counter">MULTIRROSTRO</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" data-view="blacklist" onclick="switchView('blacklist')">
+            <span class="nav-btn-left">🚫 Gestión de Vetados</span>
+            <span class="nav-counter" id="nav-count-vetados">0</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" data-view="alerts" onclick="switchView('alerts')">
+            <span class="nav-btn-left">🚨 Historial de Alertas</span>
+            <span class="nav-counter danger" id="nav-count-alertas">0</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" data-view="verify" onclick="switchView('verify')">
+            <span class="nav-btn-left">🎬 Analizar Foto / Video</span>
+            <span class="nav-counter">IA</span>
+          </button>
+        </li>
+      </ul>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="engine-pill">
+        <div class="status-row">● Motor Biométrico Multirrostro</div>
+        <div class="sub" id="engine-name">insightface:buffalo_l</div>
+      </div>
+      <a href="/docs" target="_blank" class="btn btn-slate" style="text-decoration:none;font-size:12px;">
+        📄 Documentación API (Swagger)
+      </a>
+    </div>
+  </aside>
+
+  <!-- ÁREA DE TRABAJO PRINCIPAL -->
+  <div class="workspace">
+
+    <!-- CABECERA SUPERIOR CON KPIs -->
+    <header class="topbar">
+      <div class="view-header">
+        <h2 id="topbar-title">🎥 Monitor de Acceso y Video Multirrostro</h2>
+        <p id="topbar-subtitle">Detección e identificación simultánea de múltiples rostros en cámara en vivo o videos pregrabados</p>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="kpi-strip">
+          <div class="kpi-chip">Vetados: <strong id="kpi-vetados">0</strong></div>
+          <div class="kpi-chip">FAISS: <strong id="kpi-faiss" style="color:#34d399;">0</strong></div>
+          <div class="kpi-chip">Rostros en Escena: <strong id="kpi-faces-now" style="color:#60a5fa;">0</strong></div>
+          <div class="kpi-chip">Alertas Pendientes: <strong id="kpi-alertas" style="color:#f87171;">0</strong></div>
+          <div class="kpi-chip">Latencia: <strong id="kpi-latency" style="color:#fbbf24;">-- ms</strong></div>
+        </div>
+        <button type="button" class="btn btn-slate btn-sm" id="btn-sound" onclick="toggleSound()">🔊 Alarma: ON</button>
+      </div>
+    </header>
+
+    <!-- CONTENEDOR DE VISTAS MODULARES -->
+    <main class="content-area">
+
+      <!-- ================================================================== -->
+      <!-- VISTA 1: MONITOR DE ACCESO EN TIEMPO REAL Y REPRODUCTOR DE VIDEO   -->
+      <!-- ================================================================== -->
+      <section class="module-view active" id="view-monitor">
+        <div class="monitor-layout">
+          <div class="card">
+            <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+              <div class="card-title">📹 Fuente de Video (Cámara en Vivo o Archivo CCTV)</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <button type="button" class="btn btn-sm" id="btn-start-cam" onclick="iniciarCamara()">▶️ Encender Cámara</button>
+                <input type="file" id="input-monitor-video" accept="video/*" style="display:none;" onchange="cargarVideoEnMonitor(event)" />
+                <button type="button" class="btn btn-slate btn-sm" onclick="document.getElementById('input-monitor-video').click()">🎞️ Cargar Video en Monitor</button>
+                <button type="button" class="btn btn-emerald btn-sm" id="btn-auto-scan" onclick="toggleEscaneoEnVivo()" disabled>🔍 Iniciar Detección Multirrostro</button>
+                <button type="button" class="btn btn-slate btn-sm" id="btn-snap-vetar" onclick="capturarYEnviarAModuloVetados()" disabled>📸 Capturar Frame</button>
+              </div>
+            </div>
+
+            <div class="cam-stage" id="cam-box">
+              <video id="webcam" autoplay playsinline muted></video>
+              <canvas id="overlay"></canvas>
+              <div class="cam-hud-top">
+                <div class="hud-tag">
+                  <span class="rec-dot" id="rec-dot"></span>
+                  <span id="cam-status">FUENTE INACTIVA</span>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <div class="hud-tag" id="hud-faces-count">👥 0 ROSTROS</div>
+                  <div class="hud-tag" id="hud-zone-label">PUERTA NORTE — TORNIQUETE A</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Controles de reproducción cuando se carga un archivo de video en el monitor -->
+            <div id="video-player-controls" style="display:none;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:10px 14px;background:var(--bg-elevated);border-radius:10px;border:1px solid var(--border-strong);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button type="button" class="btn btn-sm" id="btn-video-playpause" onclick="togglePlayPauseVideoMonitor()">⏸️ Pausar</button>
+                <button type="button" class="btn btn-slate btn-sm" onclick="reiniciarVideoMonitor()">⏮️ Reiniciar</button>
+                <span id="monitor-video-name" style="font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">video.mp4</span>
+              </div>
+              <div style="font-size:11px;color:#93c5fd;">
+                💡 La IA analiza todos los rostros de cada fotograma en tiempo real mientras se reproduce el video
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+              <div class="field" style="margin:0;">
+                <label>ID de Cámara / Fuente</label>
+                <input type="text" id="live-camara-id" value="CAM-ACCESO-NORTE-01" />
+              </div>
+              <div class="field" style="margin:0;">
+                <label>Zona de Control</label>
+                <input type="text" id="live-zona" value="Puerta Norte — Torniquete A" oninput="document.getElementById('hud-zone-label').textContent = this.value.toUpperCase()" />
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:18px;">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">⚡ Análisis Simultáneo de Rostros en Escena</div>
+                <span class="nav-counter" id="live-faces-badge">0 detectados</span>
+              </div>
+              <div class="banner" id="live-detection-card">
+                Enciende la cámara o <b>carga un video en el monitor</b> y activa la <b>Detección Multirrostro</b> para analizar simultáneamente a todas las personas en escena.
+              </div>
+              <div id="live-faces-grid" class="multiface-grid" style="margin-top:12px;"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">🚨 Últimas Alertas en este Acceso</div>
+                <button class="btn btn-slate btn-sm" onclick="switchView('alerts')">Ver Todo</button>
+              </div>
+              <div id="monitor-recent-alerts"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- VISTA 2: MÓDULO DE GESTIÓN DE PERSONAS VETADAS (LISTA NEGRA)       -->
+      <!-- ================================================================== -->
+      <section class="module-view" id="view-blacklist">
+        <div class="monitor-layout" style="grid-template-columns: 1fr 1.65fr;">
+          <!-- Formulario de Registro -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">➕ Registrar Persona en Lista Negra</div>
+            </div>
+
+            <form id="form-vetar">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="field">
+                  <label>Cédula / Documento (CI)</label>
+                  <input type="text" name="cedula" id="input-cedula-vetar" placeholder="Ej: 8451239" required />
+                </div>
+                <div class="field">
+                  <label>Nivel de Riesgo</label>
+                  <select name="nivel_riesgo">
+                    <option value="ALTO">🟠 ALTO</option>
+                    <option value="CRITICO">🔴 CRÍTICO</option>
+                    <option value="MEDIO">🟡 MEDIO</option>
+                    <option value="BAJO">🔵 BAJO</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="field">
+                  <label>Nombre(s)</label>
+                  <input type="text" name="nombre" placeholder="Ej: Carlos" required />
+                </div>
+                <div class="field">
+                  <label>Apellido(s)</label>
+                  <input type="text" name="apellido" placeholder="Ej: Mendoza" />
+                </div>
+              </div>
+
+              <div class="field">
+                <label>Motivo del Veto / Antecedente</label>
+                <input type="text" name="motivo_veto" placeholder="Ej: Agresión en tribuna norte" required />
+              </div>
+
+              <div class="field">
+                <label>Fotografía del Rostro</label>
+                <input type="file" name="foto" id="input-foto-vetar" accept="image/*" />
+              </div>
+
+              <div id="preview-captura" style="display:none;align-items:center;justify-content:space-between;padding:10px;border-radius:10px;background:rgba(59,130,246,0.12);border:1px dashed var(--primary);margin-bottom:14px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <img id="img-captura-vetar" style="width:52px;height:52px;border-radius:8px;object-fit:cover;" />
+                  <div>
+                    <div style="font-size:12px;font-weight:700;color:#93c5fd;">Rostro capturado desde Monitor / Video</div>
+                    <div style="font-size:11px;color:var(--text-muted);">Listo para generar embedding ArcFace (512-D)</div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-slate btn-sm" onclick="limpiarCaptura()">Quitar</button>
+              </div>
+
+              <button type="submit" class="btn" style="width:100%;">🚫 Vetar e Indexar en FAISS</button>
+            </form>
+            <div id="msg-vetar"></div>
+          </div>
+
+          <!-- Tabla del Padrón de Vetados -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📋 Padrón Activo de Personas Vetadas (FAISS)</div>
+              <input type="text" id="search-blacklist" placeholder="🔍 Buscar por nombre, CI o motivo..." oninput="renderBlacklistTable()" style="width:250px;" />
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Foto</th>
+                    <th>Cédula / CI</th>
+                    <th>Nombre Completo</th>
+                    <th>Riesgo</th>
+                    <th>Motivo de Prohibición</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-blacklist"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- VISTA 3: MÓDULO DE HISTORIAL Y AUDITORÍA DE ALERTAS                -->
+      <!-- ================================================================== -->
+      <section class="module-view" id="view-alerts">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🚨 Registro de Detecciones y Alertas en Accesos</div>
+            <button class="btn btn-slate btn-sm" onclick="refreshAllData()">🔄 Actualizar Tabla</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Captura</th>
+                  <th>Persona Detectada</th>
+                  <th>Nivel Riesgo</th>
+                  <th>Similitud</th>
+                  <th>Cámara / Zona</th>
+                  <th>Fecha y Hora</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-alerts"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- VISTA 4: LABORATORIO FORENSE MULTIRROSTRO DE FOTOS Y VIDEOS        -->
+      <!-- ================================================================== -->
+      <section class="module-view" id="view-verify">
+        <div class="monitor-layout" style="grid-template-columns: 1fr 1.25fr;">
+
+          <!-- TARJETA A: ANÁLISIS MULTIRROSTRO DE FOTOGRAFÍA -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📷 Inspección Multirrostro por Fotografía</div>
+              <span class="nav-counter">IMAGEN</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+              Sube una fotografía individual o grupal para detectar <b>todos los rostros presentes simultáneamente</b> y consultarlos en lote contra el índice FAISS.
+            </p>
+            <form id="form-file-scan">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="field">
+                  <label>Identificador de Origen</label>
+                  <input type="text" name="camara_id" value="INSPECCION-FOTO" />
+                </div>
+                <div class="field">
+                  <label>Zona / Referencia</label>
+                  <input type="text" name="zona" value="Verificación Grupal" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Seleccionar Fotografía (JPG / PNG / WEBP)</label>
+                <input type="file" name="file" accept="image/*" required />
+              </div>
+              <button type="submit" class="btn btn-emerald" style="width:100%;">🧬 Analizar Todos los Rostros en la Foto</button>
+            </form>
+            <div id="msg-file-scan"></div>
+          </div>
+
+          <!-- TARJETA B: ANÁLISIS COMPLETO DE ARCHIVO DE VIDEO -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🎬 Análisis Forense de Archivo de Video (Multirrostro)</div>
+              <span class="nav-counter">VIDEO IA</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+              Sube un archivo de video (MP4, AVI, MOV, WEBM, MKV) para que el motor IA escanee sus fotogramas, detecte <b>múltiples rostros a la vez</b> y genere la línea de tiempo de apariciones de personas vetadas.
+            </p>
+            <form id="form-video-scan">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                <div class="field">
+                  <label>ID Cámara / Archivo</label>
+                  <input type="text" name="camara_id" value="CCTV-VIDEO-01" />
+                </div>
+                <div class="field">
+                  <label>Zona / Acceso</label>
+                  <input type="text" name="zona" value="Grabación Acceso" />
+                </div>
+                <div class="field">
+                  <label>Frecuencia de Muestreo</label>
+                  <select name="sample_every_n_frames">
+                    <option value="5">Alta precisión (cada 5 frames)</option>
+                    <option value="10" selected>Estándar (cada 10 frames)</option>
+                    <option value="20">Rápido (cada 20 frames)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field">
+                <label>Seleccionar Archivo de Video (MP4 / AVI / MOV / WEBM)</label>
+                <input type="file" name="file" accept="video/*,.mp4,.avi,.mov,.webm,.mkv" required />
+              </div>
+              <button type="submit" class="btn" style="width:100%;">🎬 Procesar Video Completo con IA Multirrostro</button>
+            </form>
+            <div id="msg-video-scan"></div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- MODAL DE EVIDENCIA AMPLIADA -->
+  <div class="modal-backdrop" id="modal-evidence" onclick="closeImageModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 id="modal-title" style="font-size:16px;">Evidencia Biométrica</h3>
+        <button class="btn btn-slate btn-sm" onclick="closeImageModal()">✖ Cerrar</button>
+      </div>
+      <p id="modal-sub" style="font-size:12px;color:var(--text-muted);margin-top:4px;"></p>
+      <img id="modal-img" src="" alt="Evidencia" style="width:100%;border-radius:10px;margin-top:14px;border:1px solid var(--border);" />
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
